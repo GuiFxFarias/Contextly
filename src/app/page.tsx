@@ -1,5 +1,5 @@
-import { ContextlyApp } from "@/components/contextly-app";
+import { CompanyInfoScreen } from "@/components/company-info-screen";
 
 export default function Home() {
-  return <ContextlyApp />;
+  return <CompanyInfoScreen />;
 }

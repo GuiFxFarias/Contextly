@@ -15,24 +15,13 @@ import {
   FileText,
   FileUp,
   Loader2,
-  MessageSquare,
-  PanelLeft,
   SendHorizontal,
   Sparkles,
-  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { RetrievalReasoning } from "@/lib/rag/reasoning";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
@@ -92,20 +81,7 @@ function CollapsibleBlock({
   );
 }
 
-function formatDocDate(iso: string) {
-  try {
-    return new Intl.DateTimeFormat("en", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(iso));
-  } catch {
-    return "";
-  }
-}
-
-export function ContextlyApp() {
+export function ContextlyApp({ embedded = false }: { embedded?: boolean } = {}) {
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [queryScope, setQueryScope] = useState<QueryScope>({ kind: "all" });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -113,7 +89,6 @@ export function ContextlyApp() {
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -154,23 +129,6 @@ export function ContextlyApp() {
     scrollToBottom();
   }, [messages, sending]);
 
-  const toggleScope = (id: string) => {
-    const allIds = documents.map((d) => d.id);
-    setQueryScope((prev) => {
-      if (prev.kind === "all") {
-        const ids = allIds.filter((x) => x !== id);
-        return { kind: "subset", ids };
-      }
-      const set = new Set(prev.ids);
-      if (set.has(id)) set.delete(id);
-      else set.add(id);
-      const ids = Array.from(set);
-      if (ids.length === 0) return { kind: "subset", ids: [] };
-      if (ids.length === allIds.length) return { kind: "all" };
-      return { kind: "subset", ids };
-    });
-  };
-
   const onUploadClick = () => fileInputRef.current?.click();
 
   const onFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -207,27 +165,6 @@ export function ContextlyApp() {
       }
     } finally {
       setUploading(false);
-    }
-  };
-
-  const deleteDocument = async (id: string) => {
-    if (!confirm("Remove this document and all its chunks from your knowledge base?")) return;
-    try {
-      const res = await fetch(`/api/documents/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Delete failed");
-      }
-      setQueryScope((prev) => {
-        if (prev.kind === "all") return prev;
-        const ids = prev.ids.filter((x) => x !== id);
-        if (ids.length === 0) return { kind: "all" };
-        return { kind: "subset", ids };
-      });
-      await loadDocuments();
-    } catch (e) {
-      console.error(e);
-      alert(e instanceof Error ? e.message : "Delete failed");
     }
   };
 
@@ -341,137 +278,117 @@ export function ContextlyApp() {
     }
   };
 
-  const sidebar = (
-    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-      <div className="flex items-center gap-2 px-4 py-4">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-          <Sparkles className="size-5" aria-hidden />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight">Contextly</p>
-          <p className="truncate text-xs text-muted-foreground">Your documents, grounded answers</p>
-        </div>
-      </div>
-      <Separator />
-      <div className="p-3">
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".pdf,.txt,text/plain,application/pdf"
-          className="hidden"
-          onChange={onFileSelected}
-        />
-        <Button
-          className="w-full gap-2"
-          onClick={onUploadClick}
-          disabled={uploading}
-        >
-          {uploading ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <FileUp className="size-4" />
-          )}
-          Enviar PDF ou TXT
-        </Button>
-        <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-          Você pode selecionar vários arquivos de uma vez. Documentos marcados definem o escopo da busca;
-          com todos marcados, a busca usa a biblioteca inteira.
-        </p>
-      </div>
-      <Separator />
-      <div className="flex items-center justify-between px-4 py-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Library
-        </span>
-        {loadingDocs ? (
-          <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-        ) : null}
-      </div>
-      <ScrollArea className="min-h-0 flex-1 px-2">
-        <ul className="space-y-1 pb-4">
-          {documents.length === 0 && !loadingDocs ? (
-            <li className="px-2 py-8 text-center text-sm text-muted-foreground">
-              No documents yet. Upload a file to get started.
-            </li>
-          ) : null}
-          {documents.map((d) => {
-            const checked =
-              queryScope.kind === "all" || queryScope.ids.includes(d.id);
-            return (
-              <li
-                key={d.id}
-                className="group flex items-start gap-2 rounded-lg px-2 py-2 hover:bg-sidebar-accent"
-              >
-                <label className="mt-0.5 flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleScope(d.id)}
-                    className="rounded border-input"
-                  />
-                </label>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" title={d.name}>
-                    {d.name}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {formatDocDate(d.created_at)}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 shrink-0 opacity-60 hover:opacity-100"
-                  onClick={() => void deleteDocument(d.id)}
-                  aria-label={`Delete ${d.name}`}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-      </ScrollArea>
-    </div>
-  );
-
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden bg-background">
-      <aside className="hidden w-[280px] shrink-0 md:flex md:flex-col">{sidebar}</aside>
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-2 border-b border-border px-3 py-3 md:hidden">
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger
-              render={
-                <Button variant="outline" size="icon" aria-label="Open sidebar" />
-              }
-            >
-              <PanelLeft className="size-4" />
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[280px] p-0">
-              <SheetHeader className="sr-only">
-                <SheetTitle>Documents</SheetTitle>
-              </SheetHeader>
-              {sidebar}
-            </SheetContent>
-          </Sheet>
-          <MessageSquare className="size-5 text-muted-foreground" />
-          <h1 className="text-sm font-semibold">Chat</h1>
-        </header>
+    <div className={cn("flex h-screen w-full overflow-hidden bg-[#eef3f7]", embedded && "h-full bg-transparent")}>
+      <aside
+        className={cn(
+          "hidden w-[124px] shrink-0 flex-col bg-[#0f4f79] text-white md:flex",
+          embedded && "hidden md:hidden"
+        )}
+      >
+        <div className="px-3 py-5">
+          <div className="rounded-xl border border-white/20 px-2 py-3 text-center text-xs font-semibold">
+            KOMVOS MIND
+          </div>
+        </div>
+        <div className="px-2 text-[11px] text-white/70">Executive</div>
+        <nav className="mt-2 space-y-1 px-2 text-sm">
+          <div className="rounded bg-white/15 px-2 py-1.5">Agentes</div>
+          <div className="px-2 py-1.5 text-white/90">Arquivos</div>
+        </nav>
+        <div className="mt-auto border-t border-white/15 p-2 text-[10px] text-white/80">
+          Vinícius Otávio
+        </div>
+      </aside>
 
+      <aside
+        className={cn(
+          "hidden w-[250px] shrink-0 border-r border-[#cad6df] bg-[#edf3f7] md:flex md:flex-col",
+          embedded && "w-[260px]"
+        )}
+      >
+        <div className="space-y-1 p-3 text-[12px] text-[#274f67]">
+          <button
+            className="flex w-full items-center rounded px-2 py-1 text-left hover:bg-white/60"
+            onClick={() => {
+              setMessages([]);
+              setInput("");
+            }}
+          >
+            Novo chat
+          </button>
+          <button className="flex w-full items-center rounded px-2 py-1 text-left hover:bg-white/60">
+            Agentes
+          </button>
+          <button className="flex w-full items-center rounded px-2 py-1 text-left hover:bg-white/60">
+            Buscar
+          </button>
+          <button className="flex w-full items-center rounded px-2 py-1 text-left hover:bg-white/60">
+            Arquivos ({documents.length})
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.txt,text/plain,application/pdf"
+            className="hidden"
+            onChange={onFileSelected}
+          />
+          <Button
+            onClick={onUploadClick}
+            disabled={uploading}
+            variant="outline"
+            className="mt-2 h-7 w-full justify-start text-[11px]"
+          >
+            {uploading ? <Loader2 className="mr-1 size-3 animate-spin" /> : <FileUp className="mr-1 size-3" />}
+            Enviar arquivos
+          </Button>
+        </div>
+        <div className="px-3 pb-2 text-[11px] font-semibold text-[#274f67]">Chats</div>
+        <ScrollArea className="min-h-0 flex-1 px-2 pb-3">
+          <div className="space-y-1 text-[11px] text-[#345a70]">
+            {messages
+              .filter((m) => m.role === "user")
+              .slice(-8)
+              .reverse()
+              .map((m) => (
+                <div key={m.id} className="truncate rounded px-2 py-1 hover:bg-white/60">
+                  {m.content}
+                </div>
+              ))}
+            {messages.filter((m) => m.role === "user").length === 0 ? (
+              <p className="px-2 py-1 text-[10px] text-slate-500">Nenhum chat iniciado.</p>
+            ) : null}
+          </div>
+
+          <div className="mt-4 border-t border-[#d4dee6] pt-3">
+            <p className="px-2 pb-1 text-[11px] font-semibold text-[#274f67]">
+              Arquivos enviados
+            </p>
+            <div className="space-y-1 text-[11px] text-[#345a70]">
+              {documents.slice(0, 10).map((doc) => (
+                <div
+                  key={doc.id}
+                  className="truncate rounded px-2 py-1 hover:bg-white/60"
+                  title={doc.name}
+                >
+                  {doc.name}
+                </div>
+              ))}
+              {documents.length === 0 ? (
+                <p className="px-2 py-1 text-[10px] text-slate-500">Sem arquivos no momento.</p>
+              ) : null}
+            </div>
+          </div>
+        </ScrollArea>
+      </aside>
+
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <ScrollArea className="min-h-0 flex-1">
-          <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
+          <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-6 px-4 pb-6 pt-8">
             {messages.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-12 text-center">
-                <Sparkles className="mx-auto size-10 text-primary" />
-                <h2 className="mt-4 text-lg font-semibold tracking-tight">
-                  Ask anything in your documents
-                </h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Answers use semantic retrieval and stay within your uploaded context. Sources appear
-                  below each reply.
-                </p>
+              <div className="mt-[20vh] text-center text-[34px] font-medium text-[#4f6f84]">
+                Vinicius Otavio, o que vamos explorar hoje?
               </div>
             ) : null}
 
@@ -514,7 +431,7 @@ export function ContextlyApp() {
                   )}
                 </div>
                 {m.role === "assistant" && (m.reasoning || m.sources?.length) ? (
-                  <div className="flex w-full max-w-[85%] flex-col gap-2">
+                  <div className="flex w-full max-w-[85%] flex-col gap-2 mb-2">
                     {m.reasoning ? (
                       <CollapsibleBlock
                         title="Como chegamos aqui"
@@ -633,13 +550,13 @@ export function ContextlyApp() {
           </div>
         </ScrollArea>
 
-        <div className="border-t border-border bg-background/80 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="mx-auto flex max-w-3xl gap-2">
+        <div className="border-t border-[#cad6df] bg-[#eef3f7] p-4">
+          <div className="mx-auto flex w-full max-w-2xl gap-2 rounded-2xl border border-[#9eb3c2] bg-[#edf3f7] p-2 shadow-sm">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a question about your documents…"
-              className="min-h-[52px] resize-none rounded-xl"
+              placeholder="Como posso lhe ajudar hoje?"
+              className="min-h-[44px] resize-none border-0 bg-transparent shadow-none"
               rows={2}
               disabled={sending}
               onKeyDown={(e) => {
@@ -651,15 +568,15 @@ export function ContextlyApp() {
             />
             <Button
               size="icon"
-              className="size-[52px] shrink-0 rounded-xl"
+              className="mt-auto size-8 shrink-0 rounded-full"
               onClick={() => void sendMessage()}
               disabled={sending || !input.trim()}
               aria-label="Send"
             >
               {sending ? (
-                <Loader2 className="size-5 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <SendHorizontal className="size-5" />
+                <SendHorizontal className="size-4" />
               )}
             </Button>
           </div>
